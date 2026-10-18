@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><title>Browser side</title><pre id="log" style="font:12px monospace">Running the browser benchmark. Keep this tab in the foreground until it says DONE.
+</pre>
+<script type="module">
+// Browser side: runs each exported ONNX model on WebGPU and on WASM (CPU) with ONNX Runtime Web. Posts results/browser.json.
+import * as ort from "/node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs";
+ort.env.wasm.wasmPaths = "/node_modules/onnxruntime-web/dist/";
+const log = (s) => { document.getElementById("log").textContent += s + "\n"; };
+const MODELS = { resnet18: 224, ifcrn: 256 }, BATCHES = [1, 8, 16], N = 30, WARM = 5, out = [];
+const ad = navigator.gpu && await navigator.gpu.requestAdapter();
+const gpu = ad ? { vendor: ad.info.vendor, arch: ad.info.architecture, software: !!ad.isFallbackAdapter } : null;
+log("GPU adapter: " + JSON.stringify(gpu));
+for (const [model, S] of Object.entries(MODELS)) for (const ep of ["webgpu", "wasm"]) for (const b of BATCHES) {
+  try {
+    const sess = await ort.InferenceSession.create(`/models/${model}_b${b}.onnx`, { executionProviders: [ep] });
+    const x = new ort.Tensor("float32", Float32Array.from({ length: b * 3 * S * S }, () => Math.random() * 2 - 1), [b, 3, S, S]);
+    let t = performance.now(); await sess.run({ x }); const first = performance.now() - t;
+    for (let i = 0; i < WARM; i++) await sess.run({ x });
+    const ts = [];
+    for (let i = 0; i < N; i++) { t = performance.now(); await sess.run({ x }); ts.push(performance.now() - t); }
+    ts.sort((a, c) => a - c);
+    const r = { model, engine: "browser-" + ep, batch: b, median_ms: ts[N >> 1], p90_ms: ts[Math.floor(.9 * N) - 1], first_ms: first };
+    out.push(r); log(JSON.stringify(r));
+  } catch (e) { out.push({ model, engine: "browser-" + ep, batch: b, error: String(e) }); log(`FAILED ${model} ${ep} b${b}: ${e}`); }
+}
+await fetch("/results?name=browser", { method: "POST", body: JSON.stringify({ ua: navigator.userAgent, gpu, isolated: crossOriginIsolated, results: out }) });
+log("DONE - you can close this tab.");
+</script>
