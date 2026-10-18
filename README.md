@@ -19,7 +19,7 @@ Method: 5 warm-up runs, then the median of 30. Every timing includes copying the
 You need Python 3.9+, Node.js with npm, and Chrome, Chromium or Edge.
 ```bash
 sudo apt install python3-venv nodejs npm     # Debian/Ubuntu; use your own package manager otherwise
-git clone <this repo> && cd browser-dl-bench
+git clone https://github.com/Rishit-Reddy/browser-dl-bench.git && cd browser-dl-bench
 python3 run.py
 ```
 `run.py` does everything: it creates `.venv`, installs PyTorch and the Node package, exports the models to ONNX, times PyTorch, starts a local server, opens the browser with a clean temporary profile, waits for the browser results, and writes the charts. Keep the browser window in the foreground until it says DONE. It closes itself after.
