@@ -1,0 +1,4 @@
+- resnet50_80, batch 256, 300,000 patches in 13.1 min (382 patches/s on average)
+- ms per patch: first 10% of the run 2.56, last 10% 2.71 (+6%); fastest window 2.53, slowest 2.75
+- power: Now drawing from 'Battery Power'  -InternalBattery-0 (id=22741091) 60%; discharging; 4:10 remaining present: true -> Now drawing from 'Battery Power'  -InternalBattery-0 (id=22741091) 49%; discharging; 1:10 remaining present: true
+- macOS thermal / performance warnings recorded: none in 29 samples

@@ -1,0 +1,26 @@
+<!doctype html><meta charset="utf-8"><title>Sustained run</title><pre id="log" style="font:12px monospace">Sustained run. Keep this window in the foreground and the laptop awake until it says DONE.
+</pre>
+<script type="module">
+// Runs one model on WebGPU for a long time and records throughput per window of batches, to see whether it slows down (throttling).
+import * as ort from "/node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs";
+ort.env.wasm.wasmPaths = "/node_modules/onnxruntime-web/dist/";
+const log = (s) => { document.getElementById("log").textContent += s + "\n"; };
+const C = await (await fetch("/results/sustained_cfg.json", { cache: "no-store" })).json(), S = C.size, B = C.batch;
+const sess = await ort.InferenceSession.create(`/models/${C.model}_b${B}.onnx`, { executionProviders: ["webgpu"] });
+const x = new ort.Tensor("float32", Float32Array.from({ length: B * 3 * S * S }, () => Math.random() * 2 - 1), [B, 3, S, S]);
+for (let i = 0; i < 5; i++) await sess.run({ x });
+const total = Math.ceil(C.patches / B), W = 10, series = [];
+log(`${C.model}, batch ${B}, ${C.patches} patches = ${total} batches`);
+const post = (name, body) => fetch("/results?name=" + name, { method: "POST", body: JSON.stringify(body) });
+const t0 = performance.now(); let tw = t0;
+for (let i = 1; i <= total; i++) {
+  await sess.run({ x });
+  if (i % W === 0 || i === total) {
+    const now = performance.now(), n = i % W === 0 ? W : i % W;
+    series.push({ batches: i, patches: i * B, t_s: (now - t0) / 1000, ms_per_patch: (now - tw) / (n * B) }); tw = now;
+    if (i % 100 === 0) { log(`${i}/${total} batches, ${(series.at(-1).t_s / 60).toFixed(1)} min, ${series.at(-1).ms_per_patch.toFixed(2)} ms/patch`); post("sustained_partial", { cfg: C, series }); }
+  }
+}
+await post("sustained", { cfg: C, series, total_s: (performance.now() - t0) / 1000, ua: navigator.userAgent });
+log("DONE - you can close this window.");
+</script>

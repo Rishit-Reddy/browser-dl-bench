@@ -57,6 +57,9 @@ WebGPU doesn't tell the page how much GPU memory it uses, so the server reads it
 - Renderer (page) memory is read as RSS and is noisy. Ignore it for small differences.
 - The numbers are totals for the GPU process, including about 0.5 GB that the browser uses before the model loads. "Growth" is the peak minus the reading just before the model loads.
 
+## Sustained run
+`python run.py sustained` runs one model on browser WebGPU for a long time (default ResNet-50 on 80x80 patches, batch 256, 300,000 patches, about 13 minutes on an M2 Air) and plots throughput over time to show slowdown or throttling. Flags: `--sustained-model`, `--sustained-batch`, `--patches`. On macOS it keeps the machine awake and records the power source and any thermal warnings macOS reports; keep the browser window in the foreground and, for a fair test, plug the laptop in.
+
 ## Platform notes
 Only tested on macOS (Apple M2, Chrome). The rest is expected to work but is unverified.
 - **WebGPU**: needs a hardware-accelerated adapter. If the browser falls back to a software adapter, the "browser GPU" numbers are not GPU numbers; the chart title says so. On Linux this usually needs a working Vulkan driver and the flags above. Check `chrome://gpu`.

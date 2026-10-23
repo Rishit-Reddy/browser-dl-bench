@@ -20,7 +20,7 @@ def words(s): return [x.strip() for x in s.split(",") if x.strip()]
 ints.__name__ = "comma-separated integers"; words.__name__ = "comma-separated names"
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-ap.add_argument("mode", nargs="?", default="bench", choices=("bench", "memory"), help="bench (default): speed comparison. memory: browser GPU memory sweep (macOS/Linux)")
+ap.add_argument("mode", nargs="?", default="bench", choices=("bench", "memory", "sustained"), help="bench (default): speed comparison. memory: browser GPU memory sweep (macOS/Linux). sustained: long WebGPU run to look for slowdown / throttling")
 g = ap.add_argument_group("what to test (bench)")
 g.add_argument("--models", type=words, default=["resnet18", "ifcrn"], help=f"comma list of {','.join(MODELS)} (default: resnet18,ifcrn; the _80 ones are classifier stand-ins on 80x80 patches)")
 g.add_argument("--batches", type=ints, default=[1, 8, 16], help="comma list of batch sizes (default 1,8,16)")
@@ -36,6 +36,10 @@ m.add_argument("--mem-sizes", type=ints, default=[128, 256, 512, 1024, 2048, 409
 m.add_argument("--mem-iters", type=int, default=10, help="timed runs per memory setting (default 10)")
 m.add_argument("--mem-repeats", type=int, default=1, help="repeat each memory setting this many times, each in a fresh browser; the charts use the median (default 1)")
 m.add_argument("--long-iters", type=int, default=600, help="batches of 16 in the long run (default 600)")
+s = ap.add_argument_group("what to test (sustained)")
+s.add_argument("--sustained-model", default="resnet50_80", help="model for the sustained run (default resnet50_80)")
+s.add_argument("--sustained-batch", type=int, default=256, help="batch size (default 256)")
+s.add_argument("--patches", type=int, default=300000, help="total patches / tiles to process (default 300000)")
 o = ap.add_argument_group("environment")
 o.add_argument("--no-browser", action="store_true", default=os.environ.get("BROWSER") == "none", help="don't launch a browser: print the URL and open it yourself (bench only)")
 o.add_argument("--browser-path", default=os.environ.get("BROWSER_PATH"), help="browser executable (default: find Chrome, Edge or Chromium)")
@@ -52,7 +56,8 @@ for x, allowed, flag in ((a.models, MODELS, "--models"), (a.engines, ENGINES, "-
 venv_py = str(ROOT / ".venv" / ("Scripts/python.exe" if WIN else "bin/python"))
 py = venv_py if os.path.exists(venv_py) else sys.executable
 def run(cmd, **kw): subprocess.run(cmd, check=True, **kw)
-PLOT = "plot.py" if a.mode == "bench" else "plot_memory.py"
+PLOT = {"bench": "plot.py", "memory": "plot_memory.py", "sustained": "plot_sustained.py"}[a.mode]
+if a.mode == "sustained" and a.sustained_model not in MODELS: ap.error(f"--sustained-model: choose from {list(MODELS)}")
 os.makedirs("results", exist_ok=True)
 if a.plot_only: run([py, PLOT]); sys.exit()
 
@@ -84,6 +89,12 @@ if a.mode == "bench":
             os.remove(f)
     missing = [(n, b) for n in a.models for b in a.batches if not os.path.exists(f"models/{n}_b{b}.onnx")]
     if torch_engines or (browser_engines and (missing or a.force_export)): run([py, "bench_torch.py"])
+elif a.mode == "sustained":
+    json.dump({"models": [a.sustained_model], "sizes": MODELS, "batches": [a.sustained_batch], "engines": ["webgpu"], "runs": 1, "warmup": 1}, open("results/bench_cfg.json", "w"))
+    json.dump({"model": a.sustained_model, "size": MODELS[a.sustained_model], "batch": a.sustained_batch, "patches": a.patches}, open("results/sustained_cfg.json", "w"))
+    if not os.path.exists(f"models/{a.sustained_model}_b{a.sustained_batch}.onnx"): run([py, "bench_torch.py"])  # exports the ONNX file only
+    for f in ("results/sustained.json", "results/sustained_partial.json", "results/sustained_system.json"):
+        if os.path.exists(f): os.remove(f)
 else:
     cfgs = [{"kind": "calibration"}] * ("calibration" in a.sweeps)
     cfgs += [{"kind": "batch", "b": b, "s": 256, "iters": a.mem_iters} for b in a.mem_batches] * ("batch" in a.sweeps)
@@ -94,7 +105,7 @@ else:
 
 server = subprocess.Popen(["node", "server.js"], env={**os.environ, "PORT": a.port})
 
-def browse(url, out, wait):
+def browse(url, out, wait, tick=None, every=30):
     """Opens the page in a fresh browser (temporary profile) and waits for `out` to appear."""
     exe = None if a.no_browser else find_browser()
     browser = None
@@ -105,11 +116,13 @@ def browse(url, out, wait):
         open("results/.browser_pid", "w").write(str(browser.pid))  # lets the server sample the browser's memory
     else: print(f"Open {url} in a WebGPU-capable browser and keep the tab in the foreground.")
     try:
-        t0 = time.time()
+        t0 = time.time(); last = 0
         while not (os.path.exists(out) and os.path.getsize(out) > 0):
             if time.time() - t0 > wait: sys.exit("timed out waiting for the browser results")
             if server.poll() is not None: sys.exit("server stopped unexpectedly")
+            if tick and time.time() - last >= every: last = time.time(); tick()
             time.sleep(1)
+        if tick: tick()
         time.sleep(1)
     finally:
         if browser: browser.terminate(); time.sleep(2)
@@ -121,6 +134,17 @@ try:
         if browser_engines:
             print("Waiting for the browser run. Keep its window in the foreground...")
             browse(f"http://localhost:{a.port}/web/ort.html", "results/browser.json", 3600)
+    elif a.mode == "sustained":
+        samples = []
+        def snap():  # macOS: power source / battery, and any thermal warning macOS has recorded
+            if sys.platform != "darwin": return
+            out = lambda *c: subprocess.run(c, capture_output=True, text=True).stdout.strip()
+            samples.append({"t": round(time.time() - T0), "therm": out("pmset", "-g", "therm"), "batt": " ".join(out("pmset", "-g", "batt").split("\n")[:2]).replace("\t", " ")})
+        T0 = time.time()
+        if sys.platform == "darwin": subprocess.Popen(["caffeinate", "-dims", "-w", str(os.getpid())])  # keep the Mac awake while this runs
+        snap(); print("Sustained run: keep the browser window in the foreground. This takes a while...", flush=True)
+        browse(f"http://localhost:{a.port}/web/sustained.html", "results/sustained.json", 14400, tick=snap)
+        if samples: json.dump({"samples": samples}, open("results/sustained_system.json", "w"), indent=1)
     else:
         parts = []
         for i, c in enumerate(cfgs):
