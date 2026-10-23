@@ -8,7 +8,7 @@ ort.env.wasm.wasmPaths = "/node_modules/onnxruntime-web/dist/";
 const log = (s) => { document.getElementById("log").textContent += s + "\n"; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const sample = async () => ({ ...(await (await fetch("/sample", { cache: "no-store" })).json()), js_heap_kb: performance.memory ? performance.memory.usedJSHeapSize / 1024 : null });
-const CFGS = await (await fetch("/web/memory_cfgs.json")).json(), idx = +new URLSearchParams(location.search).get("cfg"), cfg = CFGS[idx];
+const CFGS = await (await fetch("/results/memory_cfgs.json", { cache: "no-store" })).json(), idx = +new URLSearchParams(location.search).get("cfg"), cfg = CFGS[idx];
 
 async function calibration() {
   const ad = await navigator.gpu.requestAdapter(), dev = await ad.requestDevice({ requiredLimits: { maxBufferSize: Math.min(ad.limits.maxBufferSize, 1 << 30), maxStorageBufferBindingSize: Math.min(ad.limits.maxStorageBufferBindingSize, 1 << 30) } });

@@ -21,18 +21,34 @@ python3 run.py          # on Windows: python run.py
 ```
 `run.py` creates `.venv`, installs PyTorch and the Node package, exports the models to ONNX, times PyTorch, starts a local server, opens the browser with a clean temporary profile, waits for the browser results, and writes `results/benchmark.png`, `results/summary.md` and the raw JSON. Keep the browser window in the foreground until it says DONE; it closes itself afterwards. A first run takes about 5 minutes, mostly installs.
 
-Options (environment variables):
+Everything is a flag, so you only run what you need (`python run.py --help` lists them all):
 
-| Variable | Use |
-|---|---|
-| `BROWSER=none` | print the URL instead of opening a browser; open it yourself and keep the tab in the foreground |
-| `BROWSER_PATH` | path to the browser executable |
-| `BROWSER_FLAGS` | browser flags (on Linux the default is `--enable-unsafe-webgpu --enable-features=Vulkan`) |
-| `PORT` | server port (default 8765) |
-| `TORCH_INDEX_URL` | PyTorch wheel index, e.g. `https://download.pytorch.org/whl/cpu` for a small CPU-only build, or a CUDA/ROCm index |
+| Flag | What it does | Default |
+|---|---|---|
+| `--models` | `resnet18`, `ifcrn` | both |
+| `--batches` | batch sizes, e.g. `1,8,16` | `1,8,16` |
+| `--engines` | `pytorch-cpu`, `pytorch-gpu` (CUDA, XPU or MPS, whichever exists), `wasm`, `webgpu` | all four |
+| `--runs`, `--warmup` | timed runs and warm-up runs per setting | 30, 5 |
+| `--merge` | keep earlier rows in `results/` for settings you don't re-run now | off (results are replaced) |
+| `--force-export` | re-export the ONNX models even if `models/` has them | off |
+| `--plot-only` | redraw the charts from `results/` without running anything | |
+| `--no-install` | skip creating `.venv` and installing packages | |
+| `--no-browser` | print the URL and open it yourself (keep the tab in the foreground) | |
+| `--browser-path`, `--browser-flags` | which browser, and its flags (on Linux the default is `--enable-unsafe-webgpu --enable-features=Vulkan`) | auto |
+| `--port` | local server port | 8765 |
+| `--torch-index-url` | PyTorch wheel index, e.g. `https://download.pytorch.org/whl/cpu` for a small CPU-only build, or a CUDA/ROCm index | PyPI |
+
+Examples:
+```bash
+python run.py --engines webgpu                      # only WebGPU, both models
+python run.py --engines webgpu --models ifcrn --batches 16 --runs 50
+python run.py --engines webgpu --merge              # re-run WebGPU, keep the earlier WASM and PyTorch rows
+python run.py --engines pytorch-cpu,pytorch-gpu     # PyTorch only; no browser is opened
+```
+The old environment variables (`BROWSER=none`, `BROWSER_PATH`, `BROWSER_FLAGS`, `PORT`, `TORCH_INDEX_URL`) still work as defaults for the matching flags.
 
 ## Memory sweep
-`python run.py memory` measures how much GPU memory IFCRN uses on browser WebGPU as the batch size and the tile size grow, and whether memory keeps growing over a long run. It starts a fresh browser for every setting (about 10 minutes in total) and writes `results/memory.png` and `results/memory.md`. macOS and Linux only, and the browser must be one that `run.py` launches.
+`python run.py memory` (all settings below are flags: `--sweeps calibration,batch,size,long`, `--mem-batches`, `--mem-sizes`, `--mem-iters`, `--long-iters`) measures how much GPU memory IFCRN uses on browser WebGPU as the batch size and the tile size grow, and whether memory keeps growing over a long run. It starts a fresh browser for every setting (about 10 minutes in total) and writes `results/memory.png` and `results/memory.md`. macOS and Linux only, and the browser must be one that `run.py` launches.
 
 WebGPU doesn't tell the page how much GPU memory it uses, so the server reads it from outside, from the browser's processes. This is the weak part:
 - On macOS it uses `footprint`, which includes GPU memory. The first panel of the chart is a calibration (allocate 1 GB of buffers, see what the number does). On my M2 it went up by about 1.1 GB, so it works there, and it was slow to come back down after the buffers were freed.
@@ -44,9 +60,9 @@ WebGPU doesn't tell the page how much GPU memory it uses, so the server reads it
 ## Platform notes
 Only tested on macOS (Apple M2, Chrome). The rest is expected to work but is unverified.
 - **WebGPU**: needs a hardware-accelerated adapter. If the browser falls back to a software adapter, the "browser GPU" numbers are not GPU numbers; the chart title says so. On Linux this usually needs a working Vulkan driver and the flags above. Check `chrome://gpu`.
-- **PyTorch GPU**: NVIDIA works with the default Linux build. On Windows the default wheel is CPU-only, so set `TORCH_INDEX_URL` to a CUDA index. AMD needs a ROCm build. Intel GPUs need an XPU build.
+- **PyTorch GPU**: NVIDIA works with the default Linux build. On Windows the default wheel is CPU-only, so pass `--torch-index-url` with a CUDA index. AMD needs a ROCm build. Intel GPUs need an XPU build.
 - **Linux download size**: the default PyTorch build includes CUDA and is a few GB.
-- **Snap Chromium** may refuse the temporary profile. Use `BROWSER=none` instead.
+- **Snap Chromium** may refuse the temporary profile. Use `--no-browser` instead.
 
 ## Reading the results
 - Browser and PyTorch use different software (ONNX Runtime Web vs PyTorch), so the comparison is partly a runtime comparison.
