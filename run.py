@@ -34,6 +34,7 @@ m.add_argument("--sweeps", type=words, default=list(SWEEPS), help=f"comma list o
 m.add_argument("--mem-batches", type=ints, default=[1, 2, 4, 8, 16, 32, 64], help="batch sizes for the batch sweep (256x256 tiles)")
 m.add_argument("--mem-sizes", type=ints, default=[128, 256, 512, 1024, 2048, 4096], help="tile sides in px for the size sweep (batch 1)")
 m.add_argument("--mem-iters", type=int, default=10, help="timed runs per memory setting (default 10)")
+m.add_argument("--mem-repeats", type=int, default=1, help="repeat each memory setting this many times, each in a fresh browser; the charts use the median (default 1)")
 m.add_argument("--long-iters", type=int, default=600, help="batches of 16 in the long run (default 600)")
 o = ap.add_argument_group("environment")
 o.add_argument("--no-browser", action="store_true", default=os.environ.get("BROWSER") == "none", help="don't launch a browser: print the URL and open it yourself (bench only)")
@@ -88,6 +89,7 @@ else:
     cfgs += [{"kind": "batch", "b": b, "s": 256, "iters": a.mem_iters} for b in a.mem_batches] * ("batch" in a.sweeps)
     cfgs += [{"kind": "size", "b": 1, "s": s, "iters": a.mem_iters} for s in a.mem_sizes] * ("size" in a.sweeps)
     cfgs += [{"kind": "long", "b": 16, "s": 256, "iters": a.long_iters}] * ("long" in a.sweeps)
+    cfgs = cfgs[:1] * ("calibration" in a.sweeps) + cfgs[("calibration" in a.sweeps):] * a.mem_repeats  # calibration once, the rest repeated
     json.dump(cfgs, open("results/memory_cfgs.json", "w")); run([py, "export_dynamic.py"])
 
 server = subprocess.Popen(["node", "server.js"], env={**os.environ, "PORT": a.port})
