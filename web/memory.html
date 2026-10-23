@@ -1,0 +1,52 @@
+<!doctype html><meta charset="utf-8"><title>Memory sweep</title><pre id="log" style="font:12px monospace">Memory sweep: one setting per fresh browser. Keep the window in the foreground until it says DONE.
+</pre>
+<script type="module">
+// Runs IFCRN (dynamic shape) on WebGPU for a series of settings, one setting per page load (the runner starts a fresh browser for each). Memory of the whole browser process
+// tree is read by the server (`ps`) while it runs. Calibration first: does GPU memory show up in that number at all?
+import * as ort from "/node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs";
+ort.env.wasm.wasmPaths = "/node_modules/onnxruntime-web/dist/";
+const log = (s) => { document.getElementById("log").textContent += s + "\n"; };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sample = async () => ({ ...(await (await fetch("/sample", { cache: "no-store" })).json()), js_heap_kb: performance.memory ? performance.memory.usedJSHeapSize / 1024 : null });
+const CFGS = await (await fetch("/web/memory_cfgs.json")).json(), idx = +new URLSearchParams(location.search).get("cfg"), cfg = CFGS[idx];
+
+async function calibration() {
+  const ad = await navigator.gpu.requestAdapter(), dev = await ad.requestDevice({ requiredLimits: { maxBufferSize: Math.min(ad.limits.maxBufferSize, 1 << 30), maxStorageBufferBindingSize: Math.min(ad.limits.maxStorageBufferBindingSize, 1 << 30) } });
+  const mod = dev.createShaderModule({ code: `@group(0) @binding(0) var<storage, read_write> a: array<u32>;
+    @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) id: vec3<u32>) { let i = id.x + id.y * 16776960u; if (i < arrayLength(&a)) { a[i] = i; } }` });
+  const pipe = dev.createComputePipeline({ layout: "auto", compute: { module: mod, entryPoint: "main" } });
+  const steps = [{ mb: 0, ...(await sample()) }], bufs = [], SZ = 256 << 20;
+  for (let k = 1; k <= 4; k++) {
+    const buf = dev.createBuffer({ size: SZ, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }); bufs.push(buf);
+    const enc = dev.createCommandEncoder(), p = enc.beginComputePass(); p.setPipeline(pipe);
+    p.setBindGroup(0, dev.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: buf } }] }));
+    p.dispatchWorkgroups(65535, Math.ceil(SZ / 4 / 256 / 65535)); p.end(); dev.queue.submit([enc.finish()]); await dev.queue.onSubmittedWorkDone();
+    await sleep(700); steps.push({ mb: 256 * k, ...(await sample()) });
+  }
+  bufs.forEach((b) => b.destroy()); await sleep(2500); steps.push({ mb: 0, after_free: true, ...(await sample()) });
+  return { steps };
+}
+
+async function sweep(c) {
+  await sleep(1200); const baseline = await sample();
+  const sess = await ort.InferenceSession.create("/models/ifcrn_dynamic.onnx", { executionProviders: ["webgpu"] });
+  const x = new ort.Tensor("float32", new Float32Array(c.b * 3 * c.s * c.s).fill(0.5), [c.b, 3, c.s, c.s]);
+  const afterLoad = await sample(), ts = [], series = [];
+  for (let i = 0; i < 2; i++) await sess.run({ x });
+  let stop = false; const peak = {};
+  const bump = (m) => { for (const k in m) if (k.endsWith("_kb")) peak[k] = Math.max(peak[k] || 0, m[k] || 0); };
+  const sampler = c.kind === "long" ? null : (async () => { while (!stop) { bump(await sample()); await sleep(100); } })();
+  for (let i = 1; i <= c.iters; i++) {
+    const t = performance.now(); await sess.run({ x }); ts.push(performance.now() - t);
+    if (c.kind === "long" && i % 25 === 0) { const m = await sample(); bump(m); series.push({ iter: i, ...m }); }
+  }
+  stop = true; if (sampler) await sampler; await sleep(1500);
+  const final = await sample(); ts.sort((a, b) => a - b);
+  return { baseline, afterLoad, peak, final, ms_per_tile: ts[ts.length >> 1] / c.b, series };
+}
+
+log(`setting ${idx + 1}/${CFGS.length}: ${JSON.stringify(cfg)}`);
+let r; try { r = cfg.kind === "calibration" ? await calibration() : await sweep(cfg); } catch (e) { r = { error: String(e).slice(0, 200) }; log("FAILED: " + r.error); }
+await fetch(`/results?name=memory_${idx}`, { method: "POST", body: JSON.stringify({ cfg, ...r }) });
+log("DONE");
+</script>

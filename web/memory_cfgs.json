@@ -1,0 +1,5 @@
+[{"kind":"calibration"},
+ {"kind":"batch","b":1,"s":256,"iters":10},{"kind":"batch","b":2,"s":256,"iters":10},{"kind":"batch","b":4,"s":256,"iters":10},{"kind":"batch","b":8,"s":256,"iters":10},
+ {"kind":"batch","b":16,"s":256,"iters":10},{"kind":"batch","b":32,"s":256,"iters":10},{"kind":"batch","b":64,"s":256,"iters":10},
+ {"kind":"size","b":1,"s":128,"iters":10},{"kind":"size","b":1,"s":256,"iters":10},{"kind":"size","b":1,"s":512,"iters":10},{"kind":"size","b":1,"s":1024,"iters":10},{"kind":"size","b":1,"s":2048,"iters":10},{"kind":"size","b":1,"s":4096,"iters":10},
+ {"kind":"long","b":16,"s":256,"iters":600}]

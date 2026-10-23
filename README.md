@@ -31,6 +31,16 @@ Options (environment variables):
 | `PORT` | server port (default 8765) |
 | `TORCH_INDEX_URL` | PyTorch wheel index, e.g. `https://download.pytorch.org/whl/cpu` for a small CPU-only build, or a CUDA/ROCm index |
 
+## Memory sweep
+`python run.py memory` measures how much GPU memory IFCRN uses on browser WebGPU as the batch size and the tile size grow, and whether memory keeps growing over a long run. It starts a fresh browser for every setting (about 10 minutes in total) and writes `results/memory.png` and `results/memory.md`. macOS and Linux only, and the browser must be one that `run.py` launches.
+
+WebGPU doesn't tell the page how much GPU memory it uses, so the server reads it from outside, from the browser's processes. This is the weak part:
+- On macOS it uses `footprint`, which includes GPU memory. The first panel of the chart is a calibration (allocate 1 GB of buffers, see what the number does). On my M2 it went up by about 1.1 GB, so it works there, and it was slow to come back down after the buffers were freed.
+- Plain RSS did not move at all in that calibration on the M2, so don't use it for GPU memory on Apple silicon.
+- On Linux the script falls back to the GPU process's RSS, which may not include video memory. Look at the calibration panel first. If it doesn't track the allocation, the other panels are not about GPU memory.
+- Renderer (page) memory is read as RSS and is noisy. Ignore it for small differences.
+- The numbers are totals for the GPU process, including about 0.5 GB that the browser uses before the model loads. "Growth" is the peak minus the reading just before the model loads.
+
 ## Platform notes
 Only tested on macOS (Apple M2, Chrome). The rest is expected to work but is unverified.
 - **WebGPU**: needs a hardware-accelerated adapter. If the browser falls back to a software adapter, the "browser GPU" numbers are not GPU numbers; the chart title says so. On Linux this usually needs a working Vulkan driver and the flags above. Check `chrome://gpu`.
@@ -50,5 +60,6 @@ A reference run on a MacBook Air M2 is in `reference/macbook-air-m2/`.
 - `run.py`: the one command
 - `models.py`: the two models
 - `bench_torch.py`: exports the ONNX files and times PyTorch
+- `export_dynamic.py`, `web/memory.html`, `plot_memory.py`: the memory sweep
 - `web/ort.html`: the browser benchmark; `server.js`: a small local server that receives its results
 - `plot.py`: builds the chart and tables from `results/`
