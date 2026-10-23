@@ -3,7 +3,7 @@
 A small speed test: the same neural-network models run in PyTorch and in a web browser, on the same machine, so the times can be compared.
 
 ## What it tests
-Two models with random weights. Only speed is measured, not accuracy.
+Models with random weights (two by default; `--models` also takes the classifier stand-ins `resnet18_80` and `resnet50_80`: ResNet-18 and ResNet-50 on 80x80 patches with a 2-class head, as in the group's cell classifiers). Only speed is measured, not accuracy.
 - **ResNet-18**, 224x224 input, as a well-known baseline.
 - **IFCRN**, 256x256 input: a small U-Net for nucleus detection (Edgren Schüllerqvist, 2025, section 6.1), 102,049 parameters. The thesis doesn't state the padding or the output activation, so `models.py` assumes "same" padding and none.
 

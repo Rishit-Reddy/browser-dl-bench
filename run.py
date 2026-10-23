@@ -12,7 +12,7 @@ import argparse, json, os, pathlib, shutil, subprocess, sys, tempfile, time
 
 ROOT = pathlib.Path(__file__).resolve().parent; os.chdir(ROOT)
 WIN = os.name == "nt"
-MODELS = {"resnet18": 224, "ifcrn": 256}  # name -> input size; keep in sync with models.py
+MODELS = {"resnet18": 224, "ifcrn": 256, "resnet18_80": 80, "resnet50_80": 80}  # name -> input size; keep in sync with models.py
 ENGINES = ("pytorch-cpu", "pytorch-gpu", "wasm", "webgpu")
 SWEEPS = ("calibration", "batch", "size", "long")
 def ints(s): return [int(x) for x in s.split(",") if x]
@@ -22,7 +22,7 @@ ints.__name__ = "comma-separated integers"; words.__name__ = "comma-separated na
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("mode", nargs="?", default="bench", choices=("bench", "memory"), help="bench (default): speed comparison. memory: browser GPU memory sweep (macOS/Linux)")
 g = ap.add_argument_group("what to test (bench)")
-g.add_argument("--models", type=words, default=list(MODELS), help=f"comma list of {','.join(MODELS)} (default: all)")
+g.add_argument("--models", type=words, default=["resnet18", "ifcrn"], help=f"comma list of {','.join(MODELS)} (default: resnet18,ifcrn; the _80 ones are classifier stand-ins on 80x80 patches)")
 g.add_argument("--batches", type=ints, default=[1, 8, 16], help="comma list of batch sizes (default 1,8,16)")
 g.add_argument("--engines", type=words, default=list(ENGINES), help="comma list of pytorch-cpu, pytorch-gpu (CUDA/XPU/MPS, whichever exists), wasm, webgpu (default: all)")
 g.add_argument("--runs", type=int, default=30, help="timed runs per setting (default 30)")

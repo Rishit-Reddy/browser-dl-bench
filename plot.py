@@ -11,7 +11,7 @@ names = {"pytorch-cpu": "PyTorch CPU", "pytorch-cuda": "PyTorch CUDA (GPU)", "py
          "browser-wasm": "Browser WASM (CPU)", "browser-webgpu": "Browser WebGPU (GPU)"}
 cols = {"pytorch-cpu": "#9e9e9e", "pytorch-cuda": "#2ca02c", "pytorch-xpu": "#9467bd", "pytorch-mps": "#d62728", "browser-wasm": "#aec7e8", "browser-webgpu": "#1f77b4"}
 eng = [(e, names[e], cols[e]) for e in names if any(r["engine"] == e and "error" not in r for r in R)]  # only engines that ran
-titles = {"resnet18": "ResNet-18 (baseline), 224x224", "ifcrn": "IFCRN (Olle's detector), 256x256"}
+titles = {"resnet18": "ResNet-18 (baseline), 224x224", "ifcrn": "IFCRN (Olle's detector), 256x256", "resnet18_80": "ResNet-18, 80x80 patches (classifier stand-in)", "resnet50_80": "ResNet-50, 80x80 patches (classifier stand-in)"}
 models = [(m, titles[m]) for m in titles if any(r["model"] == m and "error" not in r for r in R)]
 batches = sorted({r["batch"] for r in R})
 get = lambda m, e, b: next((r["median_ms"] / b for r in R if r["model"] == m and r["engine"] == e and r["batch"] == b and "error" not in r), float("nan"))

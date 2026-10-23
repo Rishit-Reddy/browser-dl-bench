@@ -20,7 +20,9 @@ class IFCRN(nn.Module):
         return self.out(self.dec(torch.cat([self.up(self.mid(self.pool(s))), s], 1)))
 
 # name -> (constructor, input size). ResNet-18 is the baseline, IFCRN is the architecture of interest.
-MODELS = {"resnet18": (lambda: torchvision.models.resnet18(weights=None), 224), "ifcrn": (IFCRN, 256)}
+MODELS = {"resnet18": (lambda: torchvision.models.resnet18(weights=None), 224), "ifcrn": (IFCRN, 256),
+          # classifier stand-ins: the group's papers use ResNet-family networks on 80x80 cell patches, healthy vs cancer (2 classes)
+          "resnet18_80": (lambda: torchvision.models.resnet18(weights=None, num_classes=2), 80), "resnet50_80": (lambda: torchvision.models.resnet50(weights=None, num_classes=2), 80)}
 BATCHES = (1, 8, 16)
 
 if __name__ == "__main__":
